@@ -29,7 +29,7 @@ const Testimonial = () => {
   const itemsPerPage = 10;
 
   // Updated to use your backend API instead of Google Apps Script
-  const SERVER_URL = "http://localhost:3210";
+  const SERVER_URL = "https://btsttacademybe.onrender.com";
 
   // Function to handle base64 images from MongoDB
   const getImageUrl = (photoData) => {

@@ -55,7 +55,7 @@ const NavBar = () => {
   const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
 
   // Updated: Use your Node.js server URL
-  const SERVER_URL = 'http://localhost:3210';
+  const SERVER_URL = 'https://btsttacademybe.onrender.com';
 
   const [reviewData, setReviewData] = useState({
     name: "",

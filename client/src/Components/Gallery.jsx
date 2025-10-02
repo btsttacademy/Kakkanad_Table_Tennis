@@ -10,7 +10,7 @@ import {
   Dialog,
   IconButton,
 } from '@mui/material';
-import { Refresh, Close, NavigateBefore, NavigateNext } from '@mui/icons-material';
+import { Refresh, Close, NavigateBefore, NavigateNext, ExpandMore, ExpandLess } from '@mui/icons-material';
 
 const Gallery = () => {
   const [galleryData, setGalleryData] = useState([]);
@@ -20,12 +20,21 @@ const Gallery = () => {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(8); // Initial number of images to show
+  const [showLoadMore, setShowLoadMore] = useState(true);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
 
-  const SERVER_URL = 'http://localhost:3210';
+  const SERVER_URL = 'https://btsttacademybe.onrender.com';
+
+  // Items per load based on screen size
+  const getItemsPerLoad = () => {
+    if (isMobile) return 4;
+    if (isTablet) return 6;
+    return 8;
+  };
 
   const fetchGalleryData = async () => {
     setLoading(true);
@@ -59,6 +68,10 @@ const Gallery = () => {
           initialLoadingStates[index] = true;
         });
         setImageLoadingStates(initialLoadingStates);
+
+        // Reset visible count when new data loads
+        setVisibleCount(getItemsPerLoad());
+        setShowLoadMore(transformedData.length > getItemsPerLoad());
       } else {
         throw new Error(result.message || 'No data received from server');
       }
@@ -103,6 +116,18 @@ const Gallery = () => {
   // Get preview URL (use direct URL for preview)
   const getPreviewUrl = (url) => {
     return url; // Use the direct URL we already converted
+  };
+
+  // Load More / Show Less functions
+  const handleLoadMore = () => {
+    const newCount = visibleCount + getItemsPerLoad();
+    setVisibleCount(newCount);
+    setShowLoadMore(newCount < galleryData.length);
+  };
+
+  const handleShowLess = () => {
+    setVisibleCount(getItemsPerLoad());
+    setShowLoadMore(true);
   };
 
   const handleImageLoad = (index) => {
@@ -199,6 +224,9 @@ const Gallery = () => {
     fetchGalleryData();
   }, []);
 
+  // Get visible gallery items based on current count
+  const visibleGallery = galleryData.slice(0, visibleCount);
+
   if (loading) {
     return (
       <Box 
@@ -251,7 +279,17 @@ const Gallery = () => {
         </Box>
       ) : (
         <>
-         
+          <Box textAlign="center" mb={4}>
+            <h1 className='text-[#FF9800] font-riope text-3xl'>
+              Photo Gallery
+            </h1>
+            <p className='font-in text-gray-400'>
+              Capturing our memorable moments
+            </p>
+            {/* <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Showing {visibleGallery.length} of {galleryData.length} photos
+            </Typography> */}
+          </Box>
 
           <Box
             sx={{
@@ -265,7 +303,7 @@ const Gallery = () => {
               }
             }}
           >
-            {galleryData.map((item, idx) => {
+            {visibleGallery.map((item, idx) => {
               const thumbnailUrl = getThumbnailUrl(item.imageUrl);
               
               return (
@@ -326,6 +364,51 @@ const Gallery = () => {
                 </Box>
               );
             })}
+          </Box>
+
+          {/* Load More / Show Less Buttons */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, gap: 2 }}>
+            {showLoadMore && visibleCount < galleryData.length && (
+              <Button
+                variant="outlined"
+                startIcon={<ExpandMore />}
+                onClick={handleLoadMore}
+                sx={{
+                  px: 4,
+                  py: 1.5,
+                  borderRadius: 2,
+                  borderColor: '#FF9800',
+                  color: '#FF9800',
+                  '&:hover': {
+                    backgroundColor: '#FF9800',
+                    color: 'white',
+                    borderColor: '#FF9800',
+                  }
+                }}
+              >
+                Load More ({galleryData.length - visibleCount} more)
+              </Button>
+            )}
+            
+            {visibleCount > getItemsPerLoad() && (
+              <Button
+                variant="text"
+                startIcon={<ExpandLess />}
+                onClick={handleShowLess}
+                sx={{
+                  px: 4,
+                  py: 1.5,
+                  borderRadius: 2,
+                  color: 'text.secondary',
+                  '&:hover': {
+                    backgroundColor: 'action.hover',
+                    color: 'text.primary',
+                  }
+                }}
+              >
+                Show Less
+              </Button>
+            )}
           </Box>
 
           {/* Image Preview Dialog */}
@@ -467,7 +550,7 @@ const Gallery = () => {
                 </Box>
 
                 {/* Image Info */}
-                <Box
+                {/* <Box
                   sx={{
                     position: 'absolute',
                     bottom: 16,
@@ -480,8 +563,10 @@ const Gallery = () => {
                     textAlign: 'center',
                   }}
                 >
-                 
-                </Box>
+                  <Typography variant="body2">
+                    {selectedImage.fileName}
+                  </Typography>
+                </Box> */}
               </Box>
             )}
           </Dialog>

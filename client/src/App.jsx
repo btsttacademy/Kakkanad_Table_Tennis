@@ -6,8 +6,8 @@ import Testimonial from "./Sections/Testimonial";
 import GalleryAndAwards from "./Sections/GalleryAndAwards";
 import Footer from "./Sections/Footer";
 
-// Updated: Use your Node.js server URL
-const SERVER_URL = "http://localhost:3210"; // Change this in production
+
+const SERVER_URL = "https://btsttacademybe.onrender.com"; // Change this in production
 
 const App = () => {
   const [contentData, setContentData] = useState(null);
@@ -51,7 +51,7 @@ const App = () => {
 
   useEffect(() => {
     // This will run every time the component mounts (page reload)
-    fetchData();
+    // fetchData();
     refreshData()
   }, []); // Empty dependency array means it runs once on mount
 

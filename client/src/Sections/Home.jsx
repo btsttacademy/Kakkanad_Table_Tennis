@@ -23,7 +23,7 @@ const Home = ({mainHeading,mainDescription,mainBG,mainBGmb}) => {
   });
 
   // Updated: Use your Node.js server URL
-  const SERVER_URL = 'http://localhost:3210'; // Change this in production
+  const SERVER_URL = 'https://btsttacademybe.onrender.com'; // Change this in production
 
   const validateForm = () => {
     const newErrors = {
@@ -165,7 +165,7 @@ const Home = ({mainHeading,mainDescription,mainBG,mainBGmb}) => {
   };
 
   return (
-    <div className='relative h-screen rounded-xl my-2 w-full overflow-hidden'>
+    <div id="home" className='relative h-screen rounded-xl my-2 w-full overflow-hidden'>
       
       <div className='absolute inset-0 bg-homebg max-[750px]:bg-homebgmb bg-cover bg-center bg-no-repeat z-0' />
       

@@ -121,7 +121,7 @@ const About = ({
           <div className="font-in gap-4 flex flex-col">
             <div className="mb-4">
               <div className="font-riope text-xl mb-3 text-gray-800">
-                {feature1Heading}
+                BT's TT Academy
               </div>
               <p className="mb-4 text-gray-700">
                 🧠 My warm-up and cool-down exercises are uniquely designed
@@ -151,6 +151,15 @@ const About = ({
                 passion to help you reach your goals with confidence.
               </p>
             </div>
+
+            <div className="mb-4">
+              <h1 className="text-lg font-semibold text-gray-800 mb-3 underline">
+                {feature1Heading}
+              </h1>
+              <p className="mb-3 text-gray-700">
+                {feature1Description}
+              </p>
+              </div>
 
             <div className="mb-4">
               <h1 className="text-lg font-semibold text-gray-800 mb-3 underline">

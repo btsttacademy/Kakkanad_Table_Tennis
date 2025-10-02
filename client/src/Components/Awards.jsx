@@ -10,10 +10,8 @@ import {
   Dialog,
   IconButton,
   Card,
-  CardContent,
-  TextField,
 } from '@mui/material';
-import { Refresh, Close, NavigateBefore, NavigateNext, Edit, Save } from '@mui/icons-material';
+import { Refresh, Close, NavigateBefore, NavigateNext, ExpandMore, ExpandLess } from '@mui/icons-material';
 
 const Awards = () => {
   const [awardsData, setAwardsData] = useState([]);
@@ -23,14 +21,21 @@ const Awards = () => {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
-  const [editingDescription, setEditingDescription] = useState(null);
-  const [tempDescription, setTempDescription] = useState('');
+  const [visibleCount, setVisibleCount] = useState(8); // Initial number of images to show
+  const [showLoadMore, setShowLoadMore] = useState(true);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
 
-  const SERVER_URL = 'http://localhost:3210';
+  const SERVER_URL = 'https://btsttacademybe.onrender.com';
+
+  // Items per load based on screen size
+  const getItemsPerLoad = () => {
+    if (isMobile) return 4;
+    if (isTablet) return 6;
+    return 8;
+  };
 
   const fetchAwardsData = async () => {
     setLoading(true);
@@ -48,11 +53,12 @@ const Awards = () => {
       console.log('API Response:', result);
       
       if (result.success && result.data) {
+        // Use the data exactly as it comes from the API
         const transformedData = result.data.map((item, index) => ({
           imageNo: item.imageNo ?? index + 1,
           fileName: item.fileName || `Award ${item.imageNo ?? index + 1}`,
-          thumbnailUrl: convertToDirectUrl(item.thumbnailUrl),
-          previewUrl: convertToDirectUrl(item.previewUrl),
+          thumbnailUrl: item.thumbnailUrl || '', // Ensure it's never undefined
+          previewUrl: item.previewUrl || '', // Ensure it's never undefined
           description: item.description || '',
           fileId: item.fileId || '',
         }));
@@ -65,6 +71,10 @@ const Awards = () => {
           initialLoadingStates[index] = true;
         });
         setImageLoadingStates(initialLoadingStates);
+
+        // Reset visible count when new data loads
+        setVisibleCount(getItemsPerLoad());
+        setShowLoadMore(transformedData.length > getItemsPerLoad());
       } else {
         throw new Error(result.message || 'No data received from server');
       }
@@ -76,41 +86,46 @@ const Awards = () => {
     }
   };
 
-  // Convert any Google Drive URL to direct download URL
-  const convertToDirectUrl = (url) => {
-    if (!url) return '';
+  // Extract file ID from Google Drive URL
+  const extractFileId = (url) => {
+    if (!url || typeof url !== 'string') return '';
     
     let fileId = '';
     
     if (url.includes('/file/d/')) {
       fileId = url.split('/file/d/')[1]?.split('/')[0];
-    } else if (url.includes('uc?id=')) {
-      fileId = url.split('uc?id=')[1];
-    } else if (url.includes('open?id=')) {
-      fileId = url.split('open?id=')[1];
-    } else if (url.includes('thumbnail?id=')) {
-      fileId = url.split('thumbnail?id=')[1]?.split('&')[0];
+    } else if (url.includes('id=')) {
+      fileId = url.split('id=')[1]?.split('&')[0];
+    } else if (url.includes('/uc?id=')) {
+      fileId = url.split('/uc?id=')[1];
     }
     
-    if (fileId) {
-      return `https://drive.google.com/uc?id=${fileId}`;
-    }
-    
-    return url;
+    return fileId;
   };
 
-  // Get thumbnail URL for grid view
+  // Get thumbnail URL for grid view (small size)
   const getThumbnailUrl = (url) => {
-    const fileId = url.split('uc?id=')[1];
+    if (!url || typeof url !== 'string') return '';
+    
+    const fileId = extractFileId(url);
     if (fileId) {
       return `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
     }
+    
     return url;
   };
 
-  // Get preview URL (use direct URL for preview)
+  // Get preview URL - Convert to direct image URL for preview
   const getPreviewUrl = (url) => {
-    return url; // Use the direct URL we already converted
+    if (!url || typeof url !== 'string') return '';
+    
+    const fileId = extractFileId(url);
+    if (fileId) {
+      // Use direct download URL for preview
+      return `https://drive.google.com/uc?export=view&id=${fileId}`;
+    }
+    
+    return url;
   };
 
   const handleImageLoad = (index) => {
@@ -128,9 +143,42 @@ const Awards = () => {
     }));
   };
 
+  // Load More / Show Less functions
+  const handleLoadMore = () => {
+    const newCount = visibleCount + getItemsPerLoad();
+    setVisibleCount(newCount);
+    setShowLoadMore(newCount < awardsData.length);
+  };
+
+  const handleShowLess = () => {
+    setVisibleCount(getItemsPerLoad());
+    setShowLoadMore(true);
+  };
+
   // Image preview functions
   const openImagePreview = (image, index) => {
-    setSelectedImage({ ...image, index });
+    console.log('=== OPENING IMAGE PREVIEW ===');
+    console.log('Original Thumbnail URL:', image.thumbnailUrl);
+    console.log('Original Preview URL:', image.previewUrl);
+    
+    const thumbnailFileId = extractFileId(image.thumbnailUrl);
+    const previewFileId = extractFileId(image.previewUrl);
+    
+    console.log('Thumbnail File ID:', thumbnailFileId);
+    console.log('Preview File ID:', previewFileId);
+    console.log('Are file IDs different?', thumbnailFileId !== previewFileId);
+    
+    const previewImage = {
+      ...image,
+      index,
+      displayThumbnailUrl: getThumbnailUrl(image.thumbnailUrl), // For grid
+      displayPreviewUrl: getPreviewUrl(image.previewUrl) // For dialog - converted to direct URL
+    };
+    
+    console.log('Grid URL:', previewImage.displayThumbnailUrl);
+    console.log('Preview URL:', previewImage.displayPreviewUrl);
+    
+    setSelectedImage(previewImage);
     setOpenDialog(true);
     setPreviewLoading(true);
   };
@@ -139,8 +187,6 @@ const Awards = () => {
     setOpenDialog(false);
     setSelectedImage(null);
     setPreviewLoading(false);
-    setEditingDescription(null);
-    setTempDescription('');
   };
 
   const navigateImage = (direction) => {
@@ -155,76 +201,65 @@ const Awards = () => {
       newIndex = (currentIndex - 1 + awardsData.length) % awardsData.length;
     }
 
-    setSelectedImage({ ...awardsData[newIndex], index: newIndex });
+    const newImage = {
+      ...awardsData[newIndex],
+      index: newIndex,
+      displayThumbnailUrl: getThumbnailUrl(awardsData[newIndex].thumbnailUrl),
+      displayPreviewUrl: getPreviewUrl(awardsData[newIndex].previewUrl)
+    };
+    
+    console.log('Navigating to image:', newIndex);
+    console.log('New preview URL:', newImage.displayPreviewUrl);
+    
+    setSelectedImage(newImage);
     setPreviewLoading(true);
-    setEditingDescription(null);
-    setTempDescription('');
   };
 
   const handlePreviewImageLoad = () => {
+    console.log('✅ Preview image loaded successfully');
     setPreviewLoading(false);
   };
 
   const handlePreviewImageError = (e) => {
-    console.error('Failed to load preview image:', selectedImage?.previewUrl);
+    console.error('❌ Failed to load preview image:', selectedImage?.displayPreviewUrl);
     setPreviewLoading(false);
-    // Try fallback to thumbnail URL
-    if (selectedImage) {
-      e.target.src = getThumbnailUrl(selectedImage.thumbnailUrl);
-    }
-  };
-
-  // Description editing functions
-  const startEditingDescription = () => {
-    if (selectedImage) {
-      setEditingDescription(selectedImage.fileId);
-      setTempDescription(selectedImage.description || '');
-    }
-  };
-
-  const cancelEditingDescription = () => {
-    setEditingDescription(null);
-    setTempDescription('');
-  };
-
-  const saveDescription = async () => {
-    if (!selectedImage || !tempDescription.trim()) return;
-
-    try {
-      const response = await fetch(`${SERVER_URL}/api/awards/description`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileId: selectedImage.fileId,
-          description: tempDescription.trim()
-        })
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Update local state
-        const updatedData = awardsData.map(item => 
-          item.fileId === selectedImage.fileId 
-            ? { ...item, description: tempDescription.trim() }
-            : item
-        );
-        setAwardsData(updatedData);
+    
+    // Try alternative URL formats
+    if (selectedImage && selectedImage.previewUrl) {
+      const fileId = extractFileId(selectedImage.previewUrl);
+      if (fileId) {
+        // Try different Google Drive URL formats
+        const alternatives = [
+          `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`,
+          `https://lh3.googleusercontent.com/d/${fileId}`,
+          `https://docs.google.com/uc?id=${fileId}`
+        ];
         
-        // Update selected image
-        setSelectedImage(prev => prev ? { ...prev, description: tempDescription.trim() } : null);
+        console.log('Trying alternative URLs:', alternatives);
         
-        setEditingDescription(null);
-        setTempDescription('');
-      } else {
-        throw new Error(result.message || 'Failed to update description');
+        // Try the first alternative
+        e.target.src = alternatives[0];
       }
-    } catch (err) {
-      console.error('Error updating description:', err);
-      setError(`Failed to update description: ${err.message}`);
     }
+  };
+
+  // Debug function to log URLs when clicking
+  const handleImageClick = (item, index) => {
+    console.log('=== CLICK DEBUG INFO ===');
+    console.log('Image Index:', index);
+    console.log('Thumbnail URL:', item.thumbnailUrl);
+    console.log('Preview URL:', item.previewUrl);
+    
+    const thumbnailFileId = extractFileId(item.thumbnailUrl);
+    const previewFileId = extractFileId(item.previewUrl);
+    
+    console.log('Thumbnail File ID:', thumbnailFileId);
+    console.log('Preview File ID:', previewFileId);
+    console.log('Grid will use:', getThumbnailUrl(item.thumbnailUrl));
+    console.log('Preview will use:', getPreviewUrl(item.previewUrl));
+    console.log('=== END DEBUG INFO ===');
+    
+    openImagePreview(item, index);
   };
 
   // Handle keyboard navigation
@@ -234,22 +269,13 @@ const Awards = () => {
 
       switch (event.key) {
         case 'Escape':
-          if (editingDescription) {
-            cancelEditingDescription();
-          } else {
-            closeImagePreview();
-          }
+          closeImagePreview();
           break;
         case 'ArrowLeft':
           navigateImage('prev');
           break;
         case 'ArrowRight':
           navigateImage('next');
-          break;
-        case 'Enter':
-          if (editingDescription) {
-            saveDescription();
-          }
           break;
         default:
           break;
@@ -260,7 +286,7 @@ const Awards = () => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [openDialog, selectedImage, editingDescription, tempDescription]);
+  }, [openDialog, selectedImage]);
 
   // Determine columns based on screen size
   const getColumns = () => {
@@ -272,6 +298,9 @@ const Awards = () => {
   useEffect(() => {
     fetchAwardsData();
   }, []);
+
+  // Get visible awards based on current count
+  const visibleAwards = awardsData.slice(0, visibleCount);
 
   if (loading) {
     return (
@@ -326,12 +355,15 @@ const Awards = () => {
       ) : (
         <>
           <Box textAlign="center" mb={4}>
-            <Typography variant="h4" component="h1" gutterBottom color="primary">
+            <h1 className=' text-[#FF9800] font-riope text-3xl'>
               Our Awards & Achievements
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Celebrating our success and recognition
-            </Typography>
+            </h1>
+            <p className=' font-in text-gray-400'>
+              Success and recognition
+            </p>
+            {/* <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Showing {visibleAwards.length} of {awardsData.length} awards
+            </Typography> */}
           </Box>
 
           <Box
@@ -346,8 +378,17 @@ const Awards = () => {
               }
             }}
           >
-            {awardsData.map((item, idx) => {
+            {visibleAwards.map((item, idx) => {
+              if (!item || !item.thumbnailUrl) {
+                console.warn('Invalid item at index:', idx, item);
+                return null;
+              }
+
               const thumbnailUrl = getThumbnailUrl(item.thumbnailUrl);
+              
+              if (!thumbnailUrl) {
+                return null;
+              }
               
               return (
                 <Card
@@ -367,7 +408,7 @@ const Awards = () => {
                     display: 'inline-block',
                     width: '100%',
                   }}
-                  onClick={() => openImagePreview(item, idx)}
+                  onClick={() => handleImageClick(item, idx)}
                 >
                   {imageLoadingStates[idx] && (
                     <Box
@@ -392,7 +433,7 @@ const Awards = () => {
                   <Box
                     component="img"
                     src={thumbnailUrl}
-                    alt={item.fileName}
+                    alt={item.fileName || `Award ${idx + 1}`}
                     loading="lazy"
                     sx={{
                       width: '100%',
@@ -405,10 +446,72 @@ const Awards = () => {
                     onError={() => handleImageError(idx, thumbnailUrl)}
                   />
                   
-                 
+                  {item.description && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
+                        color: 'white',
+                        padding: 2,
+                        paddingTop: 4,
+                      }}
+                    >
+                      <Typography variant="body2" noWrap>
+                        {item.description}
+                      </Typography>
+                    </Box>
+                  )}
                 </Card>
               );
             })}
+          </Box>
+
+          {/* Load More / Show Less Buttons */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, gap: 2 }}>
+            {showLoadMore && visibleCount < awardsData.length && (
+              <Button
+                variant="outlined"
+                startIcon={<ExpandMore />}
+                onClick={handleLoadMore}
+                sx={{
+                  px: 4,
+                  py: 1.5,
+                  borderRadius: 2,
+                  borderColor: '#FF9800',
+                  color: '#FF9800',
+                  '&:hover': {
+                    backgroundColor: '#FF9800',
+                    color: 'white',
+                    borderColor: '#FF9800',
+                  }
+                }}
+              >
+                Load More ({awardsData.length - visibleCount} more)
+              </Button>
+            )}
+            
+            {visibleCount > getItemsPerLoad() && (
+              <Button
+                variant="text"
+                startIcon={<ExpandLess />}
+                onClick={handleShowLess}
+                sx={{
+                  px: 4,
+                  py: 1.5,
+                  borderRadius: 2,
+                  color: 'text.secondary',
+                  '&:hover': {
+                    backgroundColor: 'action.hover',
+                    color: 'text.primary',
+                  }
+                }}
+              >
+                Show Less
+              </Button>
+            )}
           </Box>
 
           {/* Image Preview Dialog */}
@@ -427,7 +530,6 @@ const Awards = () => {
           >
             {selectedImage && (
               <Box sx={{ position: 'relative', height: '100%' }}>
-                {/* Close Button */}
                 <IconButton
                   onClick={closeImagePreview}
                   sx={{
@@ -445,7 +547,6 @@ const Awards = () => {
                   <Close />
                 </IconButton>
 
-                {/* Navigation Buttons */}
                 {awardsData.length > 1 && (
                   <>
                     <IconButton
@@ -486,7 +587,6 @@ const Awards = () => {
                   </>
                 )}
 
-                {/* Image Counter */}
                 <Box
                   sx={{
                     position: 'absolute',
@@ -504,9 +604,6 @@ const Awards = () => {
                   </Typography>
                 </Box>
 
-                
-
-                {/* Preview Loader */}
                 {previewLoading && (
                   <Box
                     sx={{
@@ -521,7 +618,6 @@ const Awards = () => {
                   </Box>
                 )}
 
-                {/* Main Image */}
                 <Box
                   sx={{
                     display: 'flex',
@@ -533,25 +629,30 @@ const Awards = () => {
                     position: 'relative',
                   }}
                 >
-                  <Box
-                    component="img"
-                    src={getPreviewUrl(selectedImage.previewUrl)}
-                    alt={selectedImage.fileName}
-                    sx={{
-                      maxWidth: '100%',
-                      maxHeight: '80vh',
-                      width: 'auto',
-                      height: 'auto',
-                      objectFit: 'contain',
-                      opacity: previewLoading ? 0.3 : 1,
-                      transition: 'opacity 0.3s ease',
-                    }}
-                    onLoad={handlePreviewImageLoad}
-                    onError={handlePreviewImageError}
-                  />
+                  {selectedImage.displayPreviewUrl ? (
+                    <Box
+                      component="img"
+                      src={selectedImage.displayPreviewUrl}
+                      alt={selectedImage.fileName}
+                      sx={{
+                        maxWidth: '100%',
+                        maxHeight: '80vh',
+                        width: 'auto',
+                        height: 'auto',
+                        objectFit: 'contain',
+                        opacity: previewLoading ? 0.3 : 1,
+                        transition: 'opacity 0.3s ease',
+                      }}
+                      onLoad={handlePreviewImageLoad}
+                      onError={handlePreviewImageError}
+                    />
+                  ) : (
+                    <Box sx={{ color: 'white', textAlign: 'center', padding: 4 }}>
+                      <Typography variant="h6">No preview available</Typography>
+                    </Box>
+                  )}
                 </Box>
 
-                {/* Image Info */}
                 <Box
                   sx={{
                     position: 'absolute',
@@ -567,13 +668,9 @@ const Awards = () => {
                     maxWidth: 600,
                   }}
                 >
-                 
-                  
-                 
-                    <Typography variant="body2">
-                      {selectedImage.description || 'No description available. Click the edit button to add one.'}
-                    </Typography>
-                 
+                  <Typography variant="body2">
+                    {selectedImage.description}
+                  </Typography>
                 </Box>
               </Box>
             )}
