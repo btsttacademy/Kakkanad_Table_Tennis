@@ -9,10 +9,38 @@ let sheets;
 // Initialize Google Sheets for awards
 async function initializeAwardsSheets() {
   try {
-    const auth = new google.auth.GoogleAuth({
-      keyFile: 'credentials.json',
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
+    let auth;
+    
+    // Check if we're in production and have environment variables
+    if (process.env.NODE_ENV === 'production' && process.env.GOOGLE_PRIVATE_KEY) {
+      console.log('🔧 Using environment variables for Awards Google Sheets authentication');
+      
+      const credentials = {
+        type: 'service_account',
+        project_id: process.env.GOOGLE_PROJECT_ID || 'bts-tt-academy',
+        private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID || '853877d3b7f471ff28ceafdcd5a39de945021579',
+        private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        client_email: process.env.GOOGLE_CLIENT_EMAIL || 'bts-sheets-and-drive@bts-tt-academy.iam.gserviceaccount.com',
+        client_id: process.env.GOOGLE_CLIENT_ID || '102050055441208325157',
+        auth_uri: 'https://accounts.google.com/o/oauth2/auth',
+        token_uri: 'https://oauth2.googleapis.com/token',
+        auth_provider_x509_cert_url: 'https://www.googleapis.com/oauth2/v1/certs',
+        client_x509_cert_url: process.env.GOOGLE_CLIENT_X509_CERT_URL || 'https://www.googleapis.com/robot/v1/metadata/x509/bts-sheets-and-drive%40bts-tt-academy.iam.gserviceaccount.com',
+        universe_domain: 'googleapis.com'
+      };
+
+      auth = new google.auth.GoogleAuth({
+        credentials: credentials,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
+    } else {
+      // Use local credentials.json file for development
+      console.log('🔧 Using credentials.json file for Awards Google Sheets authentication');
+      auth = new google.auth.GoogleAuth({
+        keyFile: 'credentials.json',
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
+    }
 
     const client = await auth.getClient();
     sheets = google.sheets({ version: 'v4', auth: client });
@@ -25,6 +53,12 @@ async function initializeAwardsSheets() {
     return sheets;
   } catch (error) {
     console.error('❌ Awards Sheets initialization error:', error.message);
+    
+    // Check if it's a credentials file error
+    if (error.code === 'ENOENT') {
+      console.log('📝 Note: credentials.json not found. Using environment variables or running without Google Sheets.');
+    }
+    
     throw error;
   }
 }
@@ -33,6 +67,11 @@ async function initializeAwardsSheets() {
 async function initializeAwardsSheetWithData() {
   try {
     console.log('🔄 Initializing awards sheet...');
+    
+    // Make sure sheets is initialized
+    if (!sheets) {
+      await initializeAwardsSheets();
+    }
     
     // Get all sheets to check if Awards sheet exists
     const spreadsheet = await sheets.spreadsheets.get({
@@ -133,6 +172,11 @@ async function initializeAwardsSheetWithData() {
 async function getAwardsDataFromSheets() {
   try {
     console.log('🔄 Fetching awards data from Google Sheets...');
+    
+    // Make sure sheets is initialized
+    if (!sheets) {
+      await initializeAwardsSheets();
+    }
     
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: AWARDS_SPREADSHEET_ID,
@@ -241,6 +285,11 @@ async function getAwardsData() {
 // Test awards connection
 async function testAwardsConnection() {
   try {
+    // Make sure sheets is initialized
+    if (!sheets) {
+      await initializeAwardsSheets();
+    }
+
     const sheetsResponse = await sheets.spreadsheets.get({
       spreadsheetId: AWARDS_SPREADSHEET_ID,
     });
@@ -274,8 +323,74 @@ async function testAwardsConnection() {
   }
 }
 
+// Add award to sheet (admin function)
+async function addAward(awardData) {
+  try {
+    console.log('📝 Adding award to sheet...');
+    
+    // Make sure sheets is initialized
+    if (!sheets) {
+      await initializeAwardsSheets();
+    }
+
+    const rowData = [
+      awardData.imageNo || '',
+      awardData.thumbnailUrl || '',
+      awardData.previewUrl || '',
+      awardData.description || ''
+    ];
+
+    const response = await sheets.spreadsheets.values.append({
+      spreadsheetId: AWARDS_SPREADSHEET_ID,
+      range: `${AWARDS_SHEET_NAME}!A:D`,
+      valueInputOption: 'RAW',
+      resource: {
+        values: [rowData]
+      }
+    });
+
+    console.log('✅ Award added successfully');
+    return {
+      success: true,
+      message: 'Award added successfully',
+      data: response.data
+    };
+    
+  } catch (error) {
+    console.error('❌ Error adding award:', error.message);
+    return {
+      success: false,
+      message: 'Failed to add award: ' + error.message
+    };
+  }
+}
+
+// Refresh awards data (force fresh fetch)
+async function refreshAwards() {
+  try {
+    console.log('🔄 Force refreshing awards data...');
+    
+    const result = await getAwardsDataFromSheets();
+    
+    return {
+      ...result,
+      refreshed: true,
+      message: 'Awards data refreshed successfully'
+    };
+    
+  } catch (error) {
+    console.error('❌ Error refreshing awards:', error.message);
+    return {
+      success: false,
+      message: 'Failed to refresh awards: ' + error.message
+    };
+  }
+}
+
 module.exports = {
   initializeAwardsSheets,
   getAwardsData,
-  testAwardsConnection
+  testAwardsConnection,
+  addAward,
+  refreshAwards
 };
