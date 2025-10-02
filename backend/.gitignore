@@ -1,0 +1,12 @@
+# Google Sheets credentials
+credentials.json
+credential.json
+*.jsonkey
+*.pem
+
+# Environment variables
+.env
+
+# Runtime files
+*.pid
+*.seed
