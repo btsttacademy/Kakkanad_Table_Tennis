@@ -1,7 +1,7 @@
 {
   "files": {
-    "main.css": "/Kakkanad-Table-Tennis/static/css/main.d0015352.css",
-    "main.js": "/Kakkanad-Table-Tennis/static/js/main.262d2325.js",
+    "main.css": "/Kakkanad-Table-Tennis/static/css/main.980c49c8.css",
+    "main.js": "/Kakkanad-Table-Tennis/static/js/main.830f4f40.js",
     "static/media/HomebgImage.png": "/Kakkanad-Table-Tennis/static/media/HomebgImage.27089868ab84a2aa251a.png",
     "static/media/HomebgImagemb.png": "/Kakkanad-Table-Tennis/static/media/HomebgImagemb.ab5484e7a62969486739.png",
     "static/media/color.png": "/Kakkanad-Table-Tennis/static/media/color.c6b03927f5d91b13ec1d.png",
@@ -11,11 +11,11 @@
     "static/media/india.png": "/Kakkanad-Table-Tennis/static/media/india.be08e68d113168b54197.png",
     "static/media/img2.jpg": "/Kakkanad-Table-Tennis/static/media/img2.4a4a9b634fd4969bcf54.jpg",
     "index.html": "/Kakkanad-Table-Tennis/index.html",
-    "main.d0015352.css.map": "/Kakkanad-Table-Tennis/static/css/main.d0015352.css.map",
-    "main.262d2325.js.map": "/Kakkanad-Table-Tennis/static/js/main.262d2325.js.map"
+    "main.980c49c8.css.map": "/Kakkanad-Table-Tennis/static/css/main.980c49c8.css.map",
+    "main.830f4f40.js.map": "/Kakkanad-Table-Tennis/static/js/main.830f4f40.js.map"
   },
   "entrypoints": [
-    "static/css/main.d0015352.css",
-    "static/js/main.262d2325.js"
+    "static/css/main.980c49c8.css",
+    "static/js/main.830f4f40.js"
   ]
 }
