@@ -96,7 +96,7 @@ function stopAutoSync() {
   }
 }
 
-// Synchronize Google Sheets data to MongoDB - DELETE ALL NON-SHEETS DATA
+// Synchronize Google Sheets data to MongoDB - PRESERVE ADDITIONAL PHOTOS
 async function syncSheetsToMongoDB() {
   try {
     const sheetData = await getReviewsFromSheets();
@@ -108,26 +108,39 @@ async function syncSheetsToMongoDB() {
     const db = getDatabase();
     const collection = db.collection('reviews');
 
-    // DELETE ALL existing reviews in MongoDB
+    // Get existing reviews from MongoDB to preserve additional photos
+    const existingReviews = await collection.find({}).toArray();
+    const existingReviewsMap = new Map();
+    existingReviews.forEach(review => {
+      existingReviewsMap.set(review.email.toLowerCase(), review);
+    });
+
+    // Prepare reviews to insert/update
+    const reviewsToUpsert = sheetData.reviews.map(sheetReview => {
+      const existingReview = existingReviewsMap.get(sheetReview.email.toLowerCase());
+      
+      // Preserve additional photos if they exist
+      const additionalPhotos = existingReview ? existingReview.additionalPhotos || [] : [];
+      
+      return {
+        timestamp: new Date(sheetReview.timestamp || new Date()),
+        name: sheetReview.name,
+        email: sheetReview.email,
+        rating: sheetReview.rating,
+        comment: sheetReview.comment,
+        photoUrl: sheetReview.photo_url || '',
+        additionalPhotosCount: sheetReview.additional_photos_count || 0,
+        additionalPhotos: additionalPhotos, // Preserve existing photos
+        status: sheetReview.status || 'Active',
+        source: 'google_sheets',
+        syncedAt: new Date()
+      };
+    });
+
+    // Delete all and insert updated reviews
     await collection.deleteMany({});
-
-    // INSERT ONLY the reviews from Google Sheets
-    const reviewsToInsert = sheetData.reviews.map(sheetReview => ({
-      timestamp: new Date(sheetReview.timestamp || new Date()),
-      name: sheetReview.name,
-      email: sheetReview.email,
-      rating: sheetReview.rating,
-      comment: sheetReview.comment,
-      photoUrl: sheetReview.photo_url || '',
-      additionalPhotosCount: sheetReview.additional_photos_count || 0,
-      additionalPhotos: [],
-      status: sheetReview.status || 'Active',
-      source: 'google_sheets',
-      syncedAt: new Date()
-    }));
-
-    if (reviewsToInsert.length > 0) {
-      await collection.insertMany(reviewsToInsert);
+    if (reviewsToUpsert.length > 0) {
+      await collection.insertMany(reviewsToUpsert);
     }
 
   } catch (error) {
@@ -184,7 +197,7 @@ async function getReviewsFromSheets() {
   }
 }
 
-// Submit review - ONLY TO GOOGLE SHEETS, MongoDB will sync automatically
+// Submit review - STORE IN BOTH GOOGLE SHEETS AND MONGODB WITH ADDITIONAL PHOTOS
 async function submitReview(reviewData) {
   try {
     // Validate required fields
@@ -193,6 +206,7 @@ async function submitReview(reviewData) {
     }
 
     let photoUrl = "";
+    let additionalPhotos = [];
     let additionalPhotosCount = 0;
 
     // Handle profile photo
@@ -208,16 +222,39 @@ async function submitReview(reviewData) {
       photoUrl = "No photo";
     }
 
-    // Handle additional photos count
+    // Handle additional photos - STORE IN MONGODB
     if (reviewData.additionalPhotos && Array.isArray(reviewData.additionalPhotos)) {
-      additionalPhotosCount = reviewData.additionalPhotos.length;
+      additionalPhotos = reviewData.additionalPhotos.map((photo, index) => {
+        if (!photo || typeof photo !== 'object' || !photo.base64) {
+          return null;
+        }
+
+        return {
+          base64: photo.base64,
+          name: photo.name || `additional_photo_${index}.jpg`,
+          type: photo.type || 'image/jpeg',
+          size: photo.base64.length,
+          uploadedAt: new Date()
+        };
+      }).filter(photo => photo !== null);
+      
+      additionalPhotosCount = additionalPhotos.length;
     }
 
-    // Store ONLY in Google Sheets - MongoDB will sync automatically
+    // Store in Google Sheets (only count)
     await storeReviewInSheets({
       ...reviewData,
       photoUrl,
       additionalPhotosCount
+    });
+
+    // Store in MongoDB (with actual photos)
+    await storeReviewInMongoDB({
+      ...reviewData,
+      photoUrl,
+      additionalPhotos,
+      additionalPhotosCount,
+      status: 'Active'
     });
 
     return {
@@ -229,6 +266,34 @@ async function submitReview(reviewData) {
       }
     };
 
+  } catch (error) {
+    throw error;
+  }
+}
+
+// Store review in MongoDB WITH ADDITIONAL PHOTOS
+async function storeReviewInMongoDB(reviewData) {
+  try {
+    const db = getDatabase();
+    const collection = db.collection('reviews');
+    
+    const reviewDocument = {
+      timestamp: new Date(),
+      name: reviewData.name,
+      email: reviewData.email,
+      rating: parseFloat(reviewData.rating),
+      comment: reviewData.comment || '',
+      photoUrl: reviewData.photoUrl || '',
+      additionalPhotos: reviewData.additionalPhotos || [], // Store actual photos
+      additionalPhotosCount: reviewData.additionalPhotosCount || 0,
+      status: reviewData.status || 'Active',
+      source: 'website',
+      storedAt: new Date()
+    };
+    
+    const result = await collection.insertOne(reviewDocument);
+    return result;
+    
   } catch (error) {
     throw error;
   }
@@ -273,7 +338,7 @@ async function storeReviewInSheets(reviewData) {
   }
 }
 
-// Get all testimonials - ONLY FROM MONGODB (which syncs from Google Sheets)
+// Get all testimonials - INCLUDE ADDITIONAL PHOTOS FROM MONGODB
 async function getTestimonials() {
   try {
     const db = getDatabase();
@@ -285,7 +350,7 @@ async function getTestimonials() {
     .sort({ timestamp: -1 })
     .toArray();
 
-    // Format testimonials for frontend
+    // Format testimonials for frontend - INCLUDE ADDITIONAL PHOTOS
     const formattedTestimonials = testimonials.map(testimonial => ({
       timestamp: testimonial.timestamp,
       name: testimonial.name,
@@ -293,10 +358,11 @@ async function getTestimonials() {
       rating: testimonial.rating,
       comment: testimonial.comment,
       photo: testimonial.photoUrl,
-      additionalPhotos: testimonial.additionalPhotos || [],
+      additionalPhotos: testimonial.additionalPhotos || [], // Include actual photos
       additionalPhotosCount: testimonial.additionalPhotosCount || 0,
       status: testimonial.status,
-      source: testimonial.source
+      source: testimonial.source,
+      storedAt: testimonial.storedAt
     }));
 
     return {
