@@ -39,12 +39,6 @@ app.get('/', (req, res) => {
       gallery: 'Available',
       awards: 'Available'
     },
-    endpoints: {
-      'GET /': 'Server status',
-      'GET /api/awards': 'Get awards data',
-      'GET /api/awards/test': 'Test awards connection',
-      'GET /api/awards/health': 'Awards health check'
-    },
     timestamp: new Date().toISOString()
   });
 });
@@ -52,56 +46,52 @@ app.get('/', (req, res) => {
 // Start server
 async function startServer() {
   try {
-    console.log('🚀 Starting server...');
-    
     // Initialize MongoDB
     await initializeMongoDB();
     
     // Initialize Google Sheets for inquiries
     await initializeGoogleSheets();
     
-    // Initialize Google Sheets for web content (with error handling)
+    // Initialize Google Sheets for web content
     try {
       await initializeWebContentSheets();
     } catch (webContentError) {
-      console.log('⚠️ Web Content Sheets initialization had issues, but server will continue...');
+      // Continue without web content sheets
     }
     
-    // Initialize Google Sheets for reviews (with error handling)
+    // Initialize Google Sheets for reviews
     try {
       await initializeReviewsSheets();
     } catch (reviewsError) {
-      console.log('⚠️ Reviews Sheets initialization had issues, but server will continue...');
+      // Continue without reviews sheets
     }
     
-    // Initialize Google Sheets for gallery (with error handling)
+    // Initialize Google Sheets for gallery
     try {
       await initializeGallerySheets();
     } catch (galleryError) {
-      console.log('⚠️ Gallery Sheets initialization had issues, but server will continue...');
+      // Continue without gallery sheets
     }
     
-    // Initialize Google Sheets for awards (with error handling)
+    // Initialize Google Sheets for awards
     try {
       await initializeAwardsSheets();
     } catch (awardsError) {
-      console.log('⚠️ Awards Sheets initialization had issues, but server will continue...');
+      // Continue without awards sheets
     }
     
     app.listen(port, () => {
-      console.log(`🎉 Server running at http://localhost:${port}`);
-      console.log('📊 All services initialized successfully!');
+      console.log(`Server running at http://localhost:${port}`);
     });
     
   } catch (error) {
-    console.error('💥 Failed to start server:', error.message);
+    console.error('Failed to start server:', error.message);
     process.exit(1);
   }
 }
 
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
-  console.log('\n🛑 Shutting down server gracefully...');
   process.exit(0);
 });
 
