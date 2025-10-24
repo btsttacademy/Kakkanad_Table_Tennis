@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { initializeMongoDB } = require('./config/database');
 const { initializeGoogleSheets } = require('./services/googleSheets');
-const { initializeWebContentSheets } = require('./services/webContentService');
+const { initializeSheets: initializeWebContentSheets } = require('./services/webContentService');
 const { initializeReviewsSheets } = require('./services/reviewsService');
 const { initializeGallerySheets } = require('./services/galleryService');
 const { initializeAwardsSheets } = require('./services/awardsService');
@@ -43,37 +43,68 @@ app.get('/', (req, res) => {
   });
 });
 
+// Health check endpoint with detailed status
+app.get('/health', async (req, res) => {
+  try {
+    const healthStatus = {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: {
+        server: 'running',
+        mongodb: 'connected',
+        googleSheets: 'initialized'
+      }
+    };
+
+    try {
+      const { getCacheStatus } = require('./services/webContentService');
+      const cacheStatus = getCacheStatus();
+      healthStatus.services.webContent = {
+        status: 'available',
+        hasCache: cacheStatus.hasCache,
+        cacheAge: cacheStatus.cacheAge
+      };
+    } catch (error) {
+      healthStatus.services.webContent = {
+        status: 'error',
+        error: error.message
+      };
+    }
+
+    res.json(healthStatus);
+  } catch (error) {
+    res.status(500).json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Start server
 async function startServer() {
   try {
-    // Initialize MongoDB
     await initializeMongoDB();
-    
-    // Initialize Google Sheets for inquiries
     await initializeGoogleSheets();
     
-    // Initialize Google Sheets for web content
     try {
       await initializeWebContentSheets();
     } catch (webContentError) {
       // Continue without web content sheets
     }
     
-    // Initialize Google Sheets for reviews
     try {
       await initializeReviewsSheets();
     } catch (reviewsError) {
       // Continue without reviews sheets
     }
     
-    // Initialize Google Sheets for gallery
     try {
       await initializeGallerySheets();
     } catch (galleryError) {
       // Continue without gallery sheets
     }
     
-    // Initialize Google Sheets for awards
     try {
       await initializeAwardsSheets();
     } catch (awardsError) {
@@ -81,11 +112,10 @@ async function startServer() {
     }
     
     app.listen(port, () => {
-      console.log(`Server running at http://localhost:${port}`);
+      // Server started successfully
     });
     
   } catch (error) {
-    console.error('Failed to start server:', error.message);
     process.exit(1);
   }
 }
@@ -93,6 +123,19 @@ async function startServer() {
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
   process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  process.exit(0);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  process.exit(1);
 });
 
 startServer();
