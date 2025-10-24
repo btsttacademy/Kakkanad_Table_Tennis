@@ -48,19 +48,17 @@ async function initializeReviewsSheets() {
     const client = await auth.getClient();
     sheets = google.sheets({ version: 'v4', auth: client });
     
-    // Setup the reviews sheet
+    // Setup the reviews sheet and sync immediately
     await setupReviewsSheet();
+    await syncSheetsToMongoDB();
     
     // Start auto-sync
     startAutoSync();
     
     return sheets;
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      // credentials.json not found, continue without Google Sheets
-      return null;
-    }
-    throw error;
+    // If Google Sheets fails, we'll work with existing MongoDB data
+    return null;
   }
 }
 
@@ -70,7 +68,6 @@ async function setupReviewsSheet() {
     const lastColumn = String.fromCharCode(64 + REVIEWS_FIELDS.length);
     const range = `'${REVIEWS_SHEET_NAME}'!A1:${lastColumn}1`;
 
-    // Set up headers for reviews
     await sheets.spreadsheets.values.update({
       spreadsheetId: REVIEWS_SPREADSHEET_ID,
       range: range,
@@ -81,11 +78,8 @@ async function setupReviewsSheet() {
     });
 
   } catch (error) {
-    // If headers already exist, continue
-    if (error.message.includes('INVALID_ARGUMENT')) {
-      return;
-    }
-    throw error;
+    // Headers may already exist, continue
+    return;
   }
 }
 
@@ -102,49 +96,38 @@ function stopAutoSync() {
   }
 }
 
-// Synchronize Google Sheets data to MongoDB
+// Synchronize Google Sheets data to MongoDB - DELETE ALL NON-SHEETS DATA
 async function syncSheetsToMongoDB() {
   try {
     const sheetData = await getReviewsFromSheets();
-    const mongoData = await getReviewsFromMongoDB();
     
     if (!sheetData.success || !sheetData.reviews) {
       return;
     }
 
-    let created = 0;
-    let updated = 0;
-    let deleted = 0;
+    const db = getDatabase();
+    const collection = db.collection('reviews');
 
-    // Create a map of MongoDB reviews by email for quick lookup
-    const mongoReviewsMap = new Map();
-    mongoData.forEach(review => {
-      mongoReviewsMap.set(review.email.toLowerCase(), review);
-    });
+    // DELETE ALL existing reviews in MongoDB
+    await collection.deleteMany({});
 
-    // Sync from Sheets to MongoDB
-    for (const sheetReview of sheetData.reviews) {
-      const existingReview = mongoReviewsMap.get(sheetReview.email.toLowerCase());
-      
-      if (existingReview) {
-        // Update existing review
-        if (needsUpdate(existingReview, sheetReview)) {
-          await updateReviewInMongoDB(sheetReview);
-          updated++;
-        }
-        // Remove from map to track which ones still exist
-        mongoReviewsMap.delete(sheetReview.email.toLowerCase());
-      } else {
-        // Create new review
-        await createReviewFromSheets(sheetReview);
-        created++;
-      }
-    }
+    // INSERT ONLY the reviews from Google Sheets
+    const reviewsToInsert = sheetData.reviews.map(sheetReview => ({
+      timestamp: new Date(sheetReview.timestamp || new Date()),
+      name: sheetReview.name,
+      email: sheetReview.email,
+      rating: sheetReview.rating,
+      comment: sheetReview.comment,
+      photoUrl: sheetReview.photo_url || '',
+      additionalPhotosCount: sheetReview.additional_photos_count || 0,
+      additionalPhotos: [],
+      status: sheetReview.status || 'Active',
+      source: 'google_sheets',
+      syncedAt: new Date()
+    }));
 
-    // Delete reviews that are in MongoDB but not in Sheets
-    for (const [email, review] of mongoReviewsMap) {
-      await softDeleteReviewInMongoDB(review._id);
-      deleted++;
+    if (reviewsToInsert.length > 0) {
+      await collection.insertMany(reviewsToInsert);
     }
 
   } catch (error) {
@@ -152,20 +135,13 @@ async function syncSheetsToMongoDB() {
   }
 }
 
-// Check if a review needs to be updated
-function needsUpdate(mongoReview, sheetReview) {
-  return (
-    mongoReview.name !== sheetReview.name ||
-    mongoReview.rating !== sheetReview.rating ||
-    mongoReview.comment !== sheetReview.comment ||
-    mongoReview.photoUrl !== sheetReview.photo_url ||
-    mongoReview.status !== sheetReview.status
-  );
-}
-
 // Get all reviews from Google Sheets
 async function getReviewsFromSheets() {
   try {
+    if (!sheets) {
+      return { success: false, error: 'Sheets not initialized' };
+    }
+
     const lastColumn = String.fromCharCode(64 + REVIEWS_FIELDS.length);
     const range = `'${REVIEWS_SHEET_NAME}'!A:${lastColumn}`;
     
@@ -183,7 +159,7 @@ async function getReviewsFromSheets() {
     const headers = rows[0];
     const dataRows = rows.slice(1);
 
-    const reviews = dataRows.map((row, index) => {
+    const reviews = dataRows.map((row) => {
       // Skip empty rows
       if (!row[1] && !row[2]) return null;
       
@@ -208,109 +184,7 @@ async function getReviewsFromSheets() {
   }
 }
 
-// Get all reviews from MongoDB
-async function getReviewsFromMongoDB() {
-  try {
-    const db = getDatabase();
-    const collection = db.collection('reviews');
-    
-    return await collection.find({ 
-      status: { $ne: 'Deleted' } 
-    }).toArray();
-    
-  } catch (error) {
-    return [];
-  }
-}
-
-// Create review in MongoDB from Sheets data
-async function createReviewFromSheets(sheetReview) {
-  try {
-    const db = getDatabase();
-    const collection = db.collection('reviews');
-    
-    const reviewDocument = {
-      timestamp: new Date(sheetReview.timestamp || new Date()),
-      name: sheetReview.name,
-      email: sheetReview.email,
-      rating: sheetReview.rating,
-      comment: sheetReview.comment,
-      photoUrl: sheetReview.photo_url || '',
-      additionalPhotosCount: sheetReview.additional_photos_count || 0,
-      additionalPhotos: [],
-      status: sheetReview.status || 'Active',
-      source: 'google_sheets_sync',
-      syncedAt: new Date()
-    };
-    
-    await collection.insertOne(reviewDocument);
-    
-  } catch (error) {
-    console.error('Error creating review from sheets:', error.message);
-  }
-}
-
-// Update review in MongoDB
-async function updateReviewInMongoDB(sheetReview) {
-  try {
-    const db = getDatabase();
-    const collection = db.collection('reviews');
-    
-    await collection.updateOne(
-      { email: sheetReview.email.toLowerCase() },
-      {
-        $set: {
-          name: sheetReview.name,
-          rating: sheetReview.rating,
-          comment: sheetReview.comment,
-          photoUrl: sheetReview.photo_url || '',
-          additionalPhotosCount: sheetReview.additional_photos_count || 0,
-          status: sheetReview.status || 'Active',
-          source: 'google_sheets_sync',
-          syncedAt: new Date()
-        }
-      }
-    );
-    
-  } catch (error) {
-    console.error('Error updating review in MongoDB:', error.message);
-  }
-}
-
-// Soft delete review in MongoDB
-async function softDeleteReviewInMongoDB(reviewId) {
-  try {
-    const db = getDatabase();
-    const collection = db.collection('reviews');
-    
-    await collection.updateOne(
-      { _id: reviewId },
-      {
-        $set: {
-          status: 'Deleted',
-          deletedAt: new Date(),
-          syncedAt: new Date()
-        }
-      }
-    );
-    
-  } catch (error) {
-    console.error('Error soft-deleting review in MongoDB:', error.message);
-  }
-}
-
-// Manual sync trigger
-async function manualSync() {
-  await syncSheetsToMongoDB();
-}
-
-// Force refresh all data
-async function forceRefresh() {
-  await syncSheetsToMongoDB();
-  return await getTestimonials();
-}
-
-// Submit review
+// Submit review - ONLY TO GOOGLE SHEETS, MongoDB will sync automatically
 async function submitReview(reviewData) {
   try {
     // Validate required fields
@@ -318,14 +192,7 @@ async function submitReview(reviewData) {
       throw new Error('Missing required fields: name, email, rating');
     }
 
-    // Check for duplicate email
-    const hasDuplicate = await checkDuplicateEmail(reviewData.email);
-    if (hasDuplicate) {
-      throw new Error('This email has already submitted a review');
-    }
-
     let photoUrl = "";
-    let additionalPhotos = [];
     let additionalPhotosCount = 0;
 
     // Handle profile photo
@@ -341,36 +208,13 @@ async function submitReview(reviewData) {
       photoUrl = "No photo";
     }
 
-    // Handle additional photos
+    // Handle additional photos count
     if (reviewData.additionalPhotos && Array.isArray(reviewData.additionalPhotos)) {
-      additionalPhotos = reviewData.additionalPhotos.map((photo, index) => {
-        if (!photo || typeof photo !== 'object' || !photo.base64) {
-          return null;
-        }
-
-        return {
-          base64: photo.base64,
-          name: photo.name || `additional_photo_${index}.jpg`,
-          type: photo.type || 'image/jpeg',
-          size: photo.base64.length,
-          uploadedAt: new Date()
-        };
-      }).filter(photo => photo !== null);
-      
-      additionalPhotosCount = additionalPhotos.length;
+      additionalPhotosCount = reviewData.additionalPhotos.length;
     }
 
-    // Store in MongoDB
-    const mongoResult = await storeReviewInMongoDB({
-      ...reviewData,
-      photoUrl,
-      additionalPhotos,
-      additionalPhotosCount,
-      status: 'Active'
-    });
-
-    // Store in Google Sheets
-    const sheetsResult = await storeReviewInSheets({
+    // Store ONLY in Google Sheets - MongoDB will sync automatically
+    await storeReviewInSheets({
       ...reviewData,
       photoUrl,
       additionalPhotosCount
@@ -385,34 +229,6 @@ async function submitReview(reviewData) {
       }
     };
 
-  } catch (error) {
-    throw error;
-  }
-}
-
-// Store review in MongoDB
-async function storeReviewInMongoDB(reviewData) {
-  try {
-    const db = getDatabase();
-    const collection = db.collection('reviews');
-    
-    const reviewDocument = {
-      timestamp: new Date(),
-      name: reviewData.name,
-      email: reviewData.email,
-      rating: parseFloat(reviewData.rating),
-      comment: reviewData.comment || '',
-      photoUrl: reviewData.photoUrl || '',
-      additionalPhotos: reviewData.additionalPhotos || [],
-      additionalPhotosCount: reviewData.additionalPhotosCount || 0,
-      status: reviewData.status || 'Active',
-      source: 'website',
-      storedAt: new Date()
-    };
-    
-    const result = await collection.insertOne(reviewDocument);
-    return result;
-    
   } catch (error) {
     throw error;
   }
@@ -457,25 +273,7 @@ async function storeReviewInSheets(reviewData) {
   }
 }
 
-// Check for duplicate email
-async function checkDuplicateEmail(email) {
-  try {
-    const db = getDatabase();
-    const collection = db.collection('reviews');
-    
-    const existingReview = await collection.findOne({ 
-      email: email.toLowerCase(),
-      status: { $ne: 'Deleted' }
-    });
-    
-    return !!existingReview;
-    
-  } catch (error) {
-    throw error;
-  }
-}
-
-// Get all testimonials (only active ones)
+// Get all testimonials - ONLY FROM MONGODB (which syncs from Google Sheets)
 async function getTestimonials() {
   try {
     const db = getDatabase();
@@ -498,7 +296,7 @@ async function getTestimonials() {
       additionalPhotos: testimonial.additionalPhotos || [],
       additionalPhotosCount: testimonial.additionalPhotosCount || 0,
       status: testimonial.status,
-      storedAt: testimonial.storedAt
+      source: testimonial.source
     }));
 
     return {
@@ -578,7 +376,5 @@ module.exports = {
   getTestimonials,
   checkUserReview,
   getReviewsStats,
-  manualSync,
-  forceRefresh,
   stopAutoSync
 };

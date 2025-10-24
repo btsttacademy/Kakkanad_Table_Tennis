@@ -4,9 +4,7 @@ const {
   submitReview, 
   getTestimonials, 
   checkUserReview, 
-  getReviewsStats,
-  manualSync,
-  forceRefresh
+  getReviewsStats
 } = require('../services/reviewsService');
 
 // Submit review
@@ -22,7 +20,7 @@ router.post('/submit', async (req, res) => {
   }
 });
 
-// Get all testimonials
+// Get all testimonials - SINGLE API
 router.get('/testimonials', async (req, res) => {
   try {
     const result = await getTestimonials();
@@ -31,19 +29,6 @@ router.get('/testimonials', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get testimonials: ' + error.message
-    });
-  }
-});
-
-// Force refresh testimonials
-router.get('/testimonials/refresh', async (req, res) => {
-  try {
-    const result = await forceRefresh();
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to refresh testimonials: ' + error.message
     });
   }
 });
@@ -82,22 +67,6 @@ router.get('/stats', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get reviews stats: ' + error.message
-    });
-  }
-});
-
-// Manual sync trigger
-router.post('/sync', async (req, res) => {
-  try {
-    await manualSync();
-    res.json({
-      success: true,
-      message: 'Manual sync completed successfully'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Sync failed: ' + error.message
     });
   }
 });
