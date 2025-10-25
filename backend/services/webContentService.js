@@ -7,7 +7,7 @@ const WEB_CONTENT_SHEET_NAME = 'Website edit content';
 let sheets;
 let cachedContent = null;
 let lastFetchTime = null;
-const CACHE_DURATION = 30 * 1000; // 2 minutes cache
+const CACHE_DURATION = 10 * 1000; // 2 minutes cache
 
 // Web content fields definition
 const WEB_CONTENT_FIELDS = [
